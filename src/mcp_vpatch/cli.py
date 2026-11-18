@@ -55,8 +55,8 @@ def cmd_check(args) -> int:
     """Evaluate one tool call or header set given as JSON (for CI or gateways)."""
     payload = json.loads(Path(args.input).read_text() if args.input != "-" else sys.stdin.read())
     rules, ctx = _rules_from(args), _ctx(args)
-    if "headers" in payload:
-        ds = evaluate_http(rules, payload["headers"], ctx)
+    if "headers" in payload or "path" in payload:
+        ds = evaluate_http(rules, payload.get("headers", {}), ctx, path=payload.get("path", "/"))
     else:
         ds = evaluate_tool_call(rules, payload["tool"], payload.get("arguments", {}), ctx)
     print(json.dumps({"decisions": [d.to_dict() for d in ds],
@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_test)
 
     p = vsub.add_parser("check", help="evaluate one tool call / header set from JSON")
-    p.add_argument("input", help='JSON file or - : {"tool":..,"arguments":..} or {"headers":..}')
+    p.add_argument("input", help='JSON file or - : {"tool":..,"arguments":..} or {"path":..,"headers":..}')
     common(p)
     ctx_flags(p)
     p.set_defaults(func=cmd_check)

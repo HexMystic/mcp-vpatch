@@ -76,16 +76,22 @@ def _header(headers: dict, name: str):
     return None
 
 
-def evaluate_http(rules: list[Rule], headers: dict, ctx: Context | None = None) -> list[Decision]:
+def evaluate_http(rules: list[Rule], headers: dict, ctx: Context | None = None,
+                  path: str | None = None) -> list[Decision]:
+    """Judge one HTTP request. `path` is the raw request target ("/x?y=1")."""
     ctx = ctx or Context()
     out: list[Decision] = []
     for rule in rules:
         if rule.kind != "http":
             continue
         for fld, cond in rule.conditions:
-            reason = CHECKS[cond.check](_header(headers, fld), cond.params, ctx)
+            if fld == "path":
+                value, where = path, "request path"
+            else:
+                value, where = _header(headers, fld), f"header {fld.capitalize()}"
+            reason = CHECKS[cond.check](value, cond.params, ctx)
             if reason:
-                out.append(Decision(rule.id, rule.action, reason, f"header {fld.capitalize()}"))
+                out.append(Decision(rule.id, rule.action, reason, where))
     return out
 
 
@@ -119,7 +125,7 @@ def run_fixtures(rule: Rule) -> list[FixtureResult]:
             if rule.kind == "tool_call":
                 ds = evaluate_tool_call([rule], fx["tool"], fx.get("arguments", {}), ctx)
             else:
-                ds = evaluate_http([rule], fx.get("headers", {}), ctx)
+                ds = evaluate_http([rule], fx.get("headers", {}), ctx, path=fx.get("path", "/"))
             hit = bool(ds)
             ok = hit if expect == "block" else not hit
             detail = "; ".join(f"{d.location}: {d.reason}" for d in ds) or "no match"

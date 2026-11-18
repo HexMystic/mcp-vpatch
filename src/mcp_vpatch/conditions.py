@@ -188,6 +188,49 @@ def url_internal_host(value, params, ctx):
     return None
 
 
+# --- HTTP transport (path / Host / Origin) ----------------------------------------
+
+def normalize_path(target: str) -> str:
+    """Normalize a request target the way a lenient router would see it.
+
+    Express (and many routers) match case-insensitively, ignore a trailing
+    slash and decode percent-escapes, so a path rule must compare the same
+    canonical form or "/API/auth/%63li-token/" walks past it.
+    """
+    from urllib.parse import unquote
+    p = target.split("?", 1)[0].split("#", 1)[0]
+    if "://" in p:  # absolute-form request target
+        p = urlsplit(p).path or "/"
+    for _ in range(3):  # double-encoding
+        q = unquote(p)
+        if q == p:
+            break
+        p = q
+    p = re.sub(r"/{2,}", "/", p.replace("\\", "/"))
+    parts: list[str] = []
+    for seg in p.split("/"):
+        if seg in ("", "."):
+            continue
+        if seg == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(seg)
+    return ("/" + "/".join(parts)).lower()
+
+
+@check("path_is")
+def path_is(value, params, ctx):
+    """value: the request target. Fires when it names one of params.paths."""
+    if not value:
+        return None
+    norm = normalize_path(value)
+    for p in params["paths"]:
+        if norm == normalize_path(p):
+            return f"request path {value[:60]!r} is {p!r}, which must not be reachable through this hop"
+    return None
+
+
 # --- HTTP transport (Host / Origin) ----------------------------------------------
 
 def _host_only(hostport: str) -> str:

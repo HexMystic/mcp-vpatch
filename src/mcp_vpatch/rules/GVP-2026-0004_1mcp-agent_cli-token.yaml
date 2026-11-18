@@ -1,0 +1,42 @@
+id: GVP-2026-0004
+title: "1MCP agent: full-scope CLI token issued to remote callers behind a same-host reverse proxy (GHSA-vrqm-3x52-5334)"
+kind: http
+action: block
+severity: high
+cwe: CWE-290
+references:
+  - {type: GHSA, id: GHSA-vrqm-3x52-5334, url: "https://github.com/1mcp-app/agent/security/advisories/GHSA-vrqm-3x52-5334"}
+  - {type: fix-commit, id: 7265f89, url: "https://github.com/1mcp-app/agent/commit/7265f89c8d76cdbbf6208be651e1954ff90e79a2"}
+affected:
+  ecosystem: npm
+  package: "@1mcp/agent"
+  vulnerable: ">= 0.31.0-beta1, <= 0.39.8; >= 0.40.0-beta.0, <= 0.40.0-beta.2"
+  fixed: "0.39.9"
+message: >-
+  With --enable-auth, POST /api/auth/cli-token handed a full-scope MCP token
+  to any caller whose TCP peer was loopback. Behind a reverse proxy on the
+  same host (the documented Caddy/nginx setup) every internet request is
+  loopback, so anyone could mint a token. The local `1mcp auth login`
+  talks to the runtime directly, never through the proxy, so this path has
+  no business on the proxied hop: block it there. Deploy http-guard between
+  the proxy and 1MCP, or add the equivalent one-liner to the proxy
+  (Caddy: `respond /api/auth/cli-token* 403`; nginx:
+  `location ^~ /api/auth/cli-token { return 403; }`, and note nginx matches
+  case-sensitively). Real fix: upgrade to >= 0.39.9 (betas: move to 0.39.10),
+  then review and revoke tokens you can't account for.
+when:
+  - {field: path, path_is: {paths: ["/api/auth/cli-token"]}}
+tests:
+  block:
+    - {path: "/api/auth/cli-token", headers: {Host: "mcp.example.test", X-Forwarded-For: "203.0.113.7"}}
+    - {path: "/api/auth/cli-token?x=1", headers: {Host: "127.0.0.1:3050"}}
+    - {path: "/API/Auth/CLI-Token/", headers: {Host: "mcp.example.test"}}
+    - {path: "//api//auth/cli-token", headers: {Host: "mcp.example.test"}}
+    - {path: "/api/auth/%63li-token", headers: {Host: "mcp.example.test"}}
+    - {path: "/api/auth/%2563li-token", headers: {Host: "mcp.example.test"}}
+    - {path: "/api/./auth/cli-token", headers: {Host: "mcp.example.test"}}
+  allow:
+    - {path: "/mcp", headers: {Host: "mcp.example.test", Authorization: "Bearer tk-..."}}
+    - {path: "/oauth/token", headers: {Host: "mcp.example.test"}}
+    - {path: "/api/auth/cli-token-docs", headers: {Host: "mcp.example.test"}}
+    - {path: "/health", headers: {Host: "mcp.example.test"}}
