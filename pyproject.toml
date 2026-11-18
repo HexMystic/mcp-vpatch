@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-vpatch"
+version = "0.1.0"
+description = "Virtual patches for MCP servers: tested guard rules that block the exploit shape of known, fixed MCP vulnerabilities."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Gridsline" }]
+dependencies = ["pyyaml>=6"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+mcp-vpatch = "mcp_vpatch.cli:main"
+
+[project.urls]
+Homepage = "https://gridsline.com"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"mcp_vpatch" = ["rules/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

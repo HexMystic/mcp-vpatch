@@ -1,0 +1,36 @@
+id: GVP-2026-0003
+title: "fastmcp httpStream: localhost server callable by any website (fixed in 4.26.2)"
+kind: http
+action: block
+severity: high
+cwe: CWE-346
+references:
+  - {type: fix-commit, id: 3a4faf3, url: "https://github.com/punkpeye/fastmcp/commit/3a4faf3"}
+  - {type: related, id: CVE-2025-66416, note: "same bug class, fixed in the official Python SDK"}
+  - {type: write-up, url: "https://gridsline.com/research/mcp-tool-inputs.html"}
+affected:
+  ecosystem: npm
+  package: fastmcp
+  vulnerable: "< 4.26.2 (observed on 4.24.5)"
+  fixed: "4.26.2"
+message: >-
+  A localhost HTTP MCP transport must only answer loopback Host names and
+  loopback (or explicitly allowed) Origins, and must not send wildcard CORS.
+  Otherwise any web page the developer has open can complete the MCP
+  handshake, list tools and call them. Real fix: upgrade to >= 4.26.2.
+  Enforce with `mcp-vpatch http-guard` in front of the server.
+when:
+  - {field: host, host_not_loopback: {}}
+  - {field: origin, origin_not_loopback: {}}
+response:
+  strip_wildcard_cors: true
+tests:
+  block:
+    - {headers: {Host: "attacker.example:8080"}}
+    - {headers: {Host: "127.0.0.1:8080", Origin: "https://evil.example"}}
+    - {headers: {Host: "localhost:8080", Origin: "null"}}
+    - {headers: {}}
+  allow:
+    - {headers: {Host: "127.0.0.1:8080"}}
+    - {headers: {Host: "localhost:8080", Origin: "http://localhost:6274"}}
+    - {headers: {Host: "[::1]:8080", Origin: "http://127.0.0.1:3000"}}

@@ -1,0 +1,36 @@
+id: GVP-2026-0002
+title: "davinci-resolve-mcp: find argument injection in conform relink_scalefix (GHSA-x29h-6rgf-w233)"
+kind: tool_call
+action: block
+severity: high
+cwe: CWE-88
+references:
+  - {type: GHSA, id: GHSA-x29h-6rgf-w233, url: "https://github.com/samuelgursky/davinci-resolve-mcp/security/advisories/GHSA-x29h-6rgf-w233"}
+  - {type: fix-commit, id: 24191e2}
+  - {type: write-up, url: "https://gridsline.com/research/mcp-tool-inputs.html"}
+affected:
+  ecosystem: npm
+  package: davinci-resolve-mcp
+  vulnerable: ">= 2.58.0, < 4.14.3"
+  fixed: "4.14.3"
+message: >-
+  Footage folders were passed straight to `find`. A "folder" that starts with
+  '-' is parsed as a find expression (-exec, -delete, -fprintf), which turns
+  indexing into command execution. A real folder path never starts with '-'.
+  Real fix: upgrade to >= 4.14.3.
+match:
+  tools: [conform]
+  args: [footageDir, footageDirs]
+when:
+  - starts_with_dash: {}
+tests:
+  block:
+    - {tool: conform, arguments: {action: relink_scalefix, args: {xml: "/proj/edit.xml", footageDir: "-exec"}}}
+    - {tool: conform, arguments: {action: relink_scalefix, args: {xml: "/proj/edit.xml", footageDirs: ["/media/A", "-delete"]}}}
+    - {tool: conform, arguments: {action: relink_scalefix, footageDirs: ["-fprintf", "/tmp/x", "%p"]}}
+    - {tool: conform, arguments: {action: relink_scalefix, args: {footageDir: "  -newer"}}}
+  allow:
+    - {tool: conform, arguments: {action: relink_scalefix, args: {xml: "/proj/edit.xml", footageDir: "/Volumes/RAID/Project-A"}}}
+    - {tool: conform, arguments: {action: relink_scalefix, args: {footageDirs: ["/media/A", "/media/B-roll", "relative/dir-1"]}}}
+    - {tool: conform, arguments: {action: report, args: {path: "/proj/report"}}}
+    - {tool: other_tool, arguments: {footageDir: "-exec"}}

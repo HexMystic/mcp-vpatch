@@ -1,0 +1,41 @@
+id: GVP-2026-0001
+title: "mcp-server-kubernetes: arbitrary file read via valuesFile (CVE-2026-85753)"
+kind: tool_call
+action: block
+severity: medium
+cwe: CWE-73
+references:
+  - {type: CVE, id: CVE-2026-85753}
+  - {type: GHSA, id: GHSA-cmgv-rr9q-f7gw, url: "https://github.com/Flux159/mcp-server-kubernetes/security/advisories/GHSA-cmgv-rr9q-f7gw"}
+  - {type: write-up, url: "https://gridsline.com/research/mcp-tool-inputs.html"}
+affected:
+  ecosystem: npm
+  package: mcp-server-kubernetes
+  vulnerable: "<= 3.8.0"
+  fixed: "4.0.5"
+message: >-
+  valuesFile must be a .yaml/.yml file inside the allowed project roots. The
+  vulnerable versions read it with `cat` and returned the contents to the model,
+  so a prompt-injected path such as ~/.kube/config or /proc/self/environ leaked
+  cluster credentials and environment secrets. Real fix: upgrade to >= 4.0.5.
+match:
+  tools: [install_helm_chart, upgrade_helm_chart]
+  args: [valuesFile]
+when:
+  - path_sensitive: {}
+  - path_outside_roots: {}
+  - not_suffix: {suffixes: [".yaml", ".yml"]}
+tests:
+  context: {roots: ["/work/charts"]}
+  block:
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, useTemplate: true, valuesFile: "/root/.kube/config"}}
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, useTemplate: true, valuesFile: "/proc/self/environ"}}
+    - {tool: upgrade_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "../../../etc/passwd"}}
+    - {tool: upgrade_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "~/.aws/credentials"}}
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "/work/charts/.env"}}
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "/work/charts/notes.txt"}}
+  allow:
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "/work/charts/nginx/values.yaml"}}
+    - {tool: upgrade_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, valuesFile: "nginx/values-prod.yml"}}
+    - {tool: install_helm_chart, arguments: {name: x, chart: bitnami/nginx, namespace: default, values: {replicaCount: 2}}}
+    - {tool: kubectl_get, arguments: {resourceType: pods, valuesFile: "/root/.kube/config"}}
