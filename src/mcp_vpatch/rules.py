@@ -12,7 +12,7 @@ BUILTIN_DIR = Path(__file__).parent / "rules"
 
 KINDS = ("tool_call", "http")
 ACTIONS = ("block", "alert")
-HTTP_FIELDS = ("host", "origin")
+HTTP_FIELDS = ("host", "origin", "path")
 
 
 class RuleError(ValueError):

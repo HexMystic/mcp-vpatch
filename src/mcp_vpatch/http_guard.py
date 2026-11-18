@@ -8,8 +8,10 @@ reach the server; ``Access-Control-Allow-Origin: *`` is removed from
 responses when a rule asks for it. Responses are streamed, so SSE and
 Streamable HTTP keep working.
 
-The guard only listens on loopback addresses: it exists to protect local
-servers from the browser, not to publish them.
+The guard only listens on loopback addresses. It protects local servers
+from the browser, and it can also sit between a same-host reverse proxy
+(Caddy, nginx) and the server to keep routes such as a local-only token
+endpoint away from remote callers.
 """
 from __future__ import annotations
 
@@ -56,7 +58,7 @@ def make_server(listen: tuple[str, int], upstream: str, rules: list[Rule], ctx: 
             pass
 
         def _handle(self):
-            decisions = evaluate_http(rules, dict(self.headers.items()), ctx)
+            decisions = evaluate_http(rules, dict(self.headers.items()), ctx, path=self.path)
             hard = blocks(decisions)
             if decisions:
                 write_log({"event": "blocked" if hard and not monitor else "matched",

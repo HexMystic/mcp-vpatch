@@ -39,6 +39,7 @@ be ported into whichever gateway a team already runs.
 | GVP-2026-0001 | mcp-server-kubernetes `valuesFile` arbitrary file read (CVE-2026-85753) | `wrap` | 4.0.5 |
 | GVP-2026-0002 | davinci-resolve-mcp `find` argument injection (GHSA-x29h-6rgf-w233) | `wrap` | 4.14.3 |
 | GVP-2026-0003 | fastmcp httpStream callable cross-site / DNS rebinding | `http-guard` | 4.26.2 |
+| GVP-2026-0004 | 1MCP agent full-scope CLI token for remote callers behind a same-host reverse proxy (GHSA-vrqm-3x52-5334) | `http-guard` between proxy and 1MCP, or a proxy one-liner | 0.39.9 |
 | GVP-CLASS-ARGV-DASH | option injection (value starts with `-`) | `wrap` | (class) |
 | GVP-CLASS-PATH-ROOT | path escape / symlink escape / secret paths | `wrap` | (class) |
 | GVP-CLASS-SSRF | URL to internal address, any spelling | `wrap` | (class) |
@@ -64,6 +65,9 @@ mcp-vpatch wrap --package davinci-resolve-mcp -- node path/to/server.mjs
 
 # HTTP server on localhost: put the guard in front, point the client at it
 mcp-vpatch http-guard --package fastmcp --listen 127.0.0.1:8765 --upstream http://127.0.0.1:8080
+
+# reverse-proxied server: Caddy/nginx -> guard -> server (keeps local-only routes local)
+mcp-vpatch http-guard --package @1mcp/agent --listen 127.0.0.1:8766 --upstream http://127.0.0.1:3050
 
 # one-off / CI / other gateways
 echo '{"tool":"conform","arguments":{"args":{"footageDir":"-exec"}}}' | mcp-vpatch check -
@@ -95,7 +99,9 @@ tests:
 
 Checks: `starts_with_dash`, `shell_metachar`, `regex`, `path_outside_roots`,
 `path_sensitive`, `not_suffix`, `url_internal_host`, and for http rules
-`host_not_loopback`, `origin_not_loopback`.
+`host_not_loopback`, `origin_not_loopback`, `path_is` (compares a normalized
+path: case, trailing slash, repeated slashes, dot segments and percent
+escapes, so `/API/auth/%63li-token/` still matches).
 
 ## Limits (say these out loud to clients)
 
@@ -111,6 +117,16 @@ Checks: `starts_with_dash`, `shell_metachar`, `regex`, `path_outside_roots`,
   that creates links later is out of scope.
 
 ## Verified locally
+
+`@1mcp/agent@0.39.8` with `--enable-auth --trust-proxy loopback`, guard on :18766:
+
+```
+Direct (what a same-host proxy forwards) POST /api/auth/cli-token -> 200 {"token":"tk-..."}
+Guard  POST /api/auth/cli-token     -> 403
+Guard  POST /API/auth/cli-token/    -> 403
+Guard  POST /api/auth/%63li-token   -> 403
+Guard  POST /mcp (no token)         -> 401 from 1MCP (normal auth still applies)
+```
 
 `fastmcp@4.24.5` httpStream demo server on 127.0.0.1:18080, guard on :18765:
 

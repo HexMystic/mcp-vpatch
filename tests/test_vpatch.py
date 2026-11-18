@@ -27,6 +27,7 @@ PUBLIC_FIXED_PACKAGES = {
     "mcp-server-kubernetes": {"CVE-2026-85753", "GHSA-cmgv-rr9q-f7gw"},
     "davinci-resolve-mcp": {"GHSA-x29h-6rgf-w233"},
     "fastmcp": set(),  # fixed in 4.26.2 (commit 3a4faf3); no advisory id of ours
+    "@1mcp/agent": {"GHSA-vrqm-3x52-5334"},  # published 2026-11-18, patched 0.39.9
 }
 
 
@@ -250,3 +251,50 @@ def test_cli_export_is_json(capsys):
     assert main(["export", "--with-classes"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["format"] == "mcp-vpatch/1" and len(data["rules"]) == len(ALL_RULES)
+
+
+# --- path rules (1MCP cli-token) ------------------------------------------------------
+
+class _TokenUpstream(BaseHTTPRequestHandler):
+    """Imitates the vulnerable shape: hands a token to anyone on loopback."""
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        body = (b'{"token":"tk-test"}' if self.path.startswith("/api/auth/cli-token")
+                else b'{"ok":true}')
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def test_http_guard_blocks_token_route_but_passes_mcp():
+    up = _serve(ThreadingHTTPServer(("127.0.0.1", 0), _TokenUpstream))
+    rules = select_rules(ALL_RULES, package="@1mcp/agent")
+    assert [r.id for r in rules] == ["GVP-2026-0004"]
+    g = _serve(http_guard.make_server(("127.0.0.1", 0), f"http://127.0.0.1:{up.server_port}",
+                                      rules, Context(), log=io.StringIO()))
+    try:
+        for path in ("/api/auth/cli-token", "/API/auth/cli-token/", "/api/auth/%63li-token"):
+            c = http.client.HTTPConnection("127.0.0.1", g.server_port, timeout=5)
+            c.request("POST", path, body=b"", headers={"Host": "mcp.example.test",
+                                                       "X-Forwarded-For": "203.0.113.7"})
+            r = c.getresponse()
+            assert r.status == 403 and b"tk-" not in r.read(), path
+        c = http.client.HTTPConnection("127.0.0.1", g.server_port, timeout=5)
+        c.request("POST", "/mcp", body=b"{}", headers={"Host": "mcp.example.test"})
+        r = c.getresponse()
+        assert r.status == 200 and r.read() == b'{"ok":true}'
+    finally:
+        g.shutdown()
+        up.shutdown()
+
+
+def test_cli_check_path(tmp_path, capsys):
+    p = tmp_path / "req.json"
+    p.write_text(json.dumps({"path": "/api/auth/cli-token", "headers": {"Host": "x"}}))
+    assert main(["check", str(p), "--package", "@1mcp/agent"]) == 1
